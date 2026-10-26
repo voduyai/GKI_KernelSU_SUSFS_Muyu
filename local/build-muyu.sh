@@ -53,6 +53,13 @@ if grep -q $'\r' "$REPO_DIR/.github/workflows/build.yml"; then
   die "this checkout has Windows (CRLF) line endings. Clone the repo inside WSL and run it from there:
   git clone https://github.com/voduyai/GKI_KernelSU_SUSFS_Muyu.git ~/GKI_KernelSU_SUSFS_Muyu"
 fi
+# repo walks up from the kernel dir looking for .repo; a stray one above the
+# workspace (e.g. ~/.repo) gets reused and the source is synced there instead.
+d="$WS"
+while d="$(dirname "$d")"; [ "$d" != / ]; do
+  [ -e "$d/.repo" ] && die "found $d/.repo above the workspace; repo would sync the kernel into $d instead of $WS/kernel.
+  Remove that old checkout (or set MUYU_BUILD_DIR somewhere else) and run again."
+done
 
 sha() { # repo ref -> sha (retry, github can be flaky)
   local s="" n

@@ -54,7 +54,19 @@ runs:
             tail -n 1 scripts/setlocalversion
             exit 0
           fi
+          # Kleaf's own git check (not this script's) marks the patched tree
+          # -dirty and passes it in through .scmversion, so clean-kernel-flags
+          # cannot remove it. Strip it from the final string instead; "d[i]rty"
+          # keeps clean-kernel-flags' sed from rewriting this line.
+          if [ "$(tail -n 1 scripts/setlocalversion)" = 'echo "$res"' ]; then
+            sed -i '$d' scripts/setlocalversion
+            echo 'echo "$res" | sed -e "s/-maybe-d[i]rty//g" -e "s/-d[i]rty//g"' >> scripts/setlocalversion
+            chmod +x scripts/setlocalversion
+          else
+            echo "WARNING: unexpected last line in scripts/setlocalversion, the version may end in -dirty"
+          fi
           echo "brand_name is empty, keeping stock kernel version string"
+          tail -n 1 scripts/setlocalversion
           exit 0
         fi
 

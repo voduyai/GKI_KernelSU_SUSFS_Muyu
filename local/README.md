@@ -44,7 +44,7 @@ git pull
 bash local/build-muyu.sh
 ```
 
-- Kết quả: `D:\Muyu\builds\local\6.1.138-android14-2025-06-KernelSU-Next-AnyKernel3-local-<ngày>.zip`
+- Kết quả: `D:\Muyu\builds\local\6.1.138-android14-2025-06-KernelSU-Next-AnyKernel3-local-<ngày>.zip` (với `--gki`, tên file theo bản đã chọn)
 - Log: `~/muyu-build/build-<ngày giờ>.log`
 - Lần đầu mất khá lâu vì phải tải source (vài GB) và build từ đầu. Các lần sau nhanh hơn nhờ cache Bazel trong `/home/runner/.cache/bazel`.
 
@@ -54,6 +54,7 @@ Tùy chọn:
 |---|---|
 | `bash local/build-muyu.sh --dry-run` | Chỉ liệt kê bước nào sẽ chạy, không build |
 | `bash local/build-muyu.sh --clean` | Build xong thì xóa thư mục làm việc (`~/muyu-build/workspace`), chỉ giữ file zip |
+| `bash local/build-muyu.sh --gki 2026-09` | Build bản GKI `android14-6.1` khác (ở đây là 6.1.176). Mặc định là `2025-06` = kernel stock muyu (tag `_r15`). Ghi sai ngày thì script sẽ liệt kê các bản có sẵn |
 | `MUYU_OUT_DIR=~/out bash local/build-muyu.sh` | Lưu zip vào thư mục khác |
 
 ## Đổi thông số
@@ -63,6 +64,18 @@ Sửa phần `settings` ở đầu `build-muyu.sh`, giữ khớp với `.github/
 - `FEATURES="SUSFS NoMount BBG NET DS NTSync Ptrace Unicode BPF"`: bỏ chữ nào thì tắt tính năng đó
 - `NOMOUNT_MODE="latest"` hoặc `"verified"`
 - `ALLOW_VERSION_MISMATCH=false` (bypass)
+
+### Bản GKI mới hơn stock (`--gki`)
+
+Chỉ nên chọn bản trong nhánh `android14-6.1`. Module vendor của muyu được build cho KMI này. Nhảy sang `android15-6.6` trở lên chắc chắn bootloop.
+
+Riêng bản `2025-06` được chỉnh cho giống hệt kernel stock: ghim tag `_r15`, chuỗi phiên bản và giờ build giống bản gốc. Các bản khác giữ nguyên chuỗi phiên bản của Google.
+
+Lên bản mới hơn, một vài module trong `system_dlkm` (build cùng kernel stock 6.1.138) có thể không load được. Khi thử, hãy flash vào slot không dùng, rồi kiểm tra Wi-Fi, Bluetooth, zram và lệnh:
+
+```bash
+adb shell su -c 'dmesg | grep -iE "disagrees|unknown symbol"'
+```
 
 ## Cập nhật từ WildKernels
 

@@ -2,9 +2,11 @@
 # Build the Xiaomi Pad 7 Pro (muyu) kernel on this machine (WSL/Linux),
 # running the same steps as "Build muyu (Xiaomi Pad 7 Pro)" on GitHub.
 #
-#   ./local/build-muyu.sh            build, keep the workspace for inspection
-#   ./local/build-muyu.sh --clean    build, then delete the workspace (keeps the zip)
-#   ./local/build-muyu.sh --dry-run  only list which workflow steps would run
+#   ./local/build-muyu.sh                build, keep the workspace for inspection
+#   ./local/build-muyu.sh --clean        build, then delete the workspace (keeps the zip)
+#   ./local/build-muyu.sh --dry-run      only list which workflow steps would run
+#   ./local/build-muyu.sh --gki 2026-09  build another android14-6.1 GKI release
+#                                        (default 2025-06 = muyu stock, tag _r15)
 #
 # Settings below mirror .github/workflows/muyu.yml. Paths can be changed with
 # MUYU_BUILD_DIR (workspace + logs) and MUYU_OUT_DIR (finished zips).
@@ -14,8 +16,7 @@ set -euo pipefail
 VERSION="android14-6.1"
 ANDROID_VERSION="android14"
 KERNEL_VERSION="6.1"
-SUBLEVEL="138"            # matrix entry 6.1.138 / 2025-06 (pinned to r15 by the muyu branch)
-OS_PATCH_LEVEL="2025-06"
+OS_PATCH_LEVEL="2025-06"  # 6.1.138, pinned to r15 by the muyu branch; --gki picks another
 PAGE_SIZE="4k"
 BRAND_NAME="stock"
 FEATURES="SUSFS NoMount BBG NET DS NTSync Ptrace Unicode BPF"   # drop a word to disable it
@@ -31,13 +32,17 @@ WS="$BUILD_DIR/workspace"
 OUT_DIR="${MUYU_OUT_DIR:-/mnt/d/Muyu/builds/local}"
 CLEAN=false
 DRY=false
-for a in "$@"; do
-  case "$a" in
+while [ $# -gt 0 ]; do
+  case "$1" in
     --clean) CLEAN=true ;;
     --dry-run) DRY=true ;;
+    --gki) [ $# -ge 2 ] || { echo "--gki needs a date, e.g. --gki 2026-09" >&2; exit 2; }
+           OS_PATCH_LEVEL="$2"; shift ;;
+    --gki=*) OS_PATCH_LEVEL="${1#--gki=}" ;;
     -h|--help) sed -n '2,12p' "$0"; exit 0 ;;
-    *) echo "unknown option: $a" >&2; exit 2 ;;
+    *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
+  shift
 done
 
 say() { printf '\n\033[1;36m== %s\033[0m\n' "$*"; }
@@ -60,6 +65,14 @@ while d="$(dirname "$d")"; [ "$d" != / ]; do
   [ -e "$d/.repo" ] && die "found $d/.repo above the workspace; repo would sync the kernel into $d instead of $WS/kernel.
   Remove that old checkout (or set MUYU_BUILD_DIR somewhere else) and run again."
 done
+
+# The sublevel for each GKI release comes from the same matrix main.yml uses.
+# Entries with a variant (other kernel source) or "lts" are not muyu builds.
+GKI_MATRIX="$REPO_DIR/.github/config/$VERSION.json"
+SUBLEVEL="$(jq -r --arg d "$OS_PATCH_LEVEL" \
+  'first(.include[] | select(.date == $d and .variant == null and .sublevel != "X") | .sublevel) // empty' "$GKI_MATRIX")"
+[ -n "$SUBLEVEL" ] || die "no $VERSION GKI release '$OS_PATCH_LEVEL' in ${GKI_MATRIX#$REPO_DIR/}. Available:
+  $(jq -r '[.include[] | select(.variant == null and .sublevel != "X") | "\(.date)=6.1.\(.sublevel)"] | join(" ")' "$GKI_MATRIX")"
 
 sha() { # repo ref -> sha (retry, github can be flaky)
   local s="" n

@@ -31,6 +31,10 @@ jobs:
           set -euo pipefail
           before="$(gh run list --workflow main.yml --branch "$BUILD_REF" --event workflow_dispatch --limit 1 --json databaseId --jq '.[0].databaseId // 0')"
 
+          # commit_mode=latest: NoMount (and the kernel module/metamodule built
+          # with it) comes from maxsteeel/nomount dev tip instead of the audited
+          # pin. For KernelSU-Next nothing else changes: its root tree and SUSFS
+          # already track their latest tips in either mode.
           gh workflow run main.yml --ref "$BUILD_REF" \
             -f release_type=CI \
             -f use_cache=true \
@@ -40,7 +44,7 @@ jobs:
             -f page_size=4k \
             -f brand_name=stock \
             -f keep_kmi=false \
-            -f commit_mode=verified \
+            -f commit_mode=latest \
             -f root_flavor=KernelSU-Next \
             -f use_susfs=true \
             -f use_nomount=true \
@@ -68,7 +72,7 @@ jobs:
                 echo "Run: $url"
                 echo
                 echo "6.1.x-android14 · 2025-06 (r15) · 4k · brand stock · KernelSU-Next"
-                echo "SUSFS, NoMount, BBG, Networking, DroidSpaces, NTSync, Ptrace, Unicode, BPF · bypass off"
+                echo "SUSFS, NoMount (latest), BBG, Networking, DroidSpaces, NTSync, Ptrace, Unicode, BPF · bypass off"
               } >> "$GITHUB_STEP_SUMMARY"
               exit 0
             fi

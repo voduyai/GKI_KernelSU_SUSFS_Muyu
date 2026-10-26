@@ -1,0 +1,3 @@
+# Scripts here run in WSL/Linux: always store and check them out with LF,
+# whatever core.autocrlf says on Windows.
+* text eol=lf

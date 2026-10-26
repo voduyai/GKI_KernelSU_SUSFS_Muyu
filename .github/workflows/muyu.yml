@@ -5,9 +5,9 @@ name: Build muyu (Xiaomi Pad 7 Pro)
 # (= android14-6.1-2025-06_r15, pinned by the muyu branch).
 #
 # It does not build anything itself: it dispatches "Build Kernels" (main.yml)
-# on the muyu branch with the inputs below, so the upstream workflow files stay
-# untouched and upstream updates merge cleanly. Change a value here to change
-# what every muyu build uses.
+# on the branch picked in "Use workflow from" with the inputs below, so the
+# upstream workflow files stay untouched and upstream updates merge cleanly.
+# Change a value here to change what every muyu build uses.
 
 permissions:
   actions: write
@@ -22,7 +22,9 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
-      BUILD_REF: muyu
+      # Build the branch this workflow was started from (main in the
+      # GKI_KernelSU_SUSFS_Muyu repo, muyu in the old fork).
+      BUILD_REF: ${{ github.ref_name }}
     steps:
       - name: Start Build Kernels with the muyu settings
         run: |

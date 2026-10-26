@@ -6,8 +6,8 @@ Chạy **đúng các bước** của workflow "Build muyu (Xiaomi Pad 7 Pro)" tr
 
 | File | Dùng để |
 |---|---|
-| `setup-wsl.sh` | Cài gói cần thiết, tạo `/home/runner` (chạy **một lần**) |
-| `build-muyu.sh` | Build kernel muyu, tạo file zip AnyKernel3 |
+| `setup-wsl.sh` | Cài gói cần thiết (kể cả `gh` và zig), tạo `/home/runner` (chạy **một lần**, chạy lại khi script được cập nhật) |
+| `build-muyu.sh` | Build kernel muyu, tạo file zip AnyKernel3, build NoMount metamodule và tải manager APK |
 | `ghrun.py` | Trình chạy workflow GitHub thu nhỏ (script trên tự gọi) |
 
 ## Yêu cầu
@@ -32,7 +32,10 @@ Mở **Ubuntu (WSL)** rồi chạy:
 git clone https://github.com/voduyai/GKI_KernelSU_SUSFS_Muyu.git ~/GKI_KernelSU_SUSFS_Muyu
 cd ~/GKI_KernelSU_SUSFS_Muyu
 bash local/setup-wsl.sh
+gh auth login
 ```
+
+`gh auth login` chỉ cần chạy một lần. Lệnh này cho phép script tải manager APK từ GitHub Actions: GitHub bắt buộc đăng nhập khi tải artifact. Bạn có thể bỏ qua bước này, khi đó bản build sẽ không kèm manager.
 
 > Phải clone **bên trong WSL** (`~/...`), đừng chạy từ `/mnt/d/...`. Bản checkout trên ổ Windows có xuống dòng CRLF làm bash lỗi, và ổ Windows cũng rất chậm khi build kernel.
 
@@ -44,7 +47,11 @@ git pull
 bash local/build-muyu.sh
 ```
 
-- Kết quả: `D:\Muyu\builds\local\6.1.138-android14-2025-06-KernelSU-Next-AnyKernel3-local-<ngày>.zip` (với `--gki`, tên file theo bản đã chọn)
+- Kết quả, trong `D:\Muyu\builds\local` (hoặc thư mục `MUYU_OUT_DIR`):
+  - `6.1.138-android14-2025-06-KernelSU-Next-AnyKernel3-local-<ngày>.zip`: kernel. Khi dùng `--gki`, tên file theo bản đã chọn
+  - `NoMount-Metamodule-<commit>.zip`: metamodule NoMount, build từ **đúng commit** NoMount đã tích hợp vào kernel, cách làm giống job `build-nomount-module` trên CI
+  - `KernelSU_Next_v…_<số>-release.apk` và bản `…-spoofed…apk`: manager, lấy y như CI từ lượt build `build-manager-ci` của KernelSU-Next chính thức (nhánh `dev`). CI cũng không tự build manager
+- Nếu không build được NoMount (thiếu zig) hoặc không tải được manager (chưa `gh auth login`), kernel vẫn được đóng gói bình thường. Cuối log sẽ có dòng `WARNING: kernel built, but without: …`
 - Log: `~/muyu-build/build-<ngày giờ>.log`
 - Lần đầu mất khá lâu vì phải tải source (vài GB) và build từ đầu. Các lần sau nhanh hơn nhờ cache Bazel trong `/home/runner/.cache/bazel`.
 
@@ -55,7 +62,8 @@ Tùy chọn:
 | `bash local/build-muyu.sh --dry-run` | Chỉ liệt kê bước nào sẽ chạy, không build |
 | `bash local/build-muyu.sh --clean` | Build xong thì xóa thư mục làm việc (`~/muyu-build/workspace`), chỉ giữ file zip |
 | `bash local/build-muyu.sh --gki 2026-09` | Build bản GKI `android14-6.1` khác (ở đây là 6.1.176). Mặc định là `2025-06` = kernel stock muyu (tag `_r15`). Ghi sai ngày thì script sẽ liệt kê các bản có sẵn |
-| `MUYU_OUT_DIR=~/out bash local/build-muyu.sh` | Lưu zip vào thư mục khác |
+| `bash local/build-muyu.sh --kernel-only` | Chỉ build kernel, không build NoMount và không tải manager |
+| `MUYU_OUT_DIR=~/out bash local/build-muyu.sh` | Lưu zip và APK vào thư mục khác |
 
 ## Đổi thông số
 
@@ -89,4 +97,6 @@ Làm trên máy Windows (thư mục `D:\Muyu\GKI_KernelSU_SUSFS_Muyu`) như thư
 | `/home/runner is not writable` | Chạy lại `bash local/setup-wsl.sh` |
 | Build dừng đột ngột, hoặc log có `Killed` / `signal 9` | Thiếu RAM. Tăng `memory`/`swap` trong `.wslconfig` |
 | `No space left on device` | Dọn `~/muyu-build` và `/home/runner/.cache/bazel` |
-| NoMount metamodule | Bản local chỉ build kernel. Lấy metamodule cùng phiên bản từ https://github.com/maxsteeel/nomount/releases, hoặc từ một lượt build trên GitHub |
+| `zig not found` | Chạy lại `bash local/setup-wsl.sh` (bản mới có cài zig) |
+| `not logged in to GitHub` | Chạy `gh auth login` một lần, rồi build lại. Muốn bỏ qua manager thì thêm `--kernel-only` |
+| `run … has no manager APKs (artifacts expired?)` | Artifact của lượt build manager đã hết hạn. Đợi KernelSU-Next có lượt build `dev` mới, hoặc tải manager ở trang Releases của KernelSU-Next |

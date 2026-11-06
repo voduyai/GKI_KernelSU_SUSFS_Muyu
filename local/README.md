@@ -50,7 +50,7 @@ bash local/build-muyu.sh
 - Kết quả, trong `D:\Muyu\builds\local` (hoặc thư mục `MUYU_OUT_DIR`):
   - `6.1.138-android14-2025-06-KernelSU-Next-AnyKernel3-local-<ngày>.zip`: kernel. Khi dùng `--gki`, tên file theo bản đã chọn
   - `NoMount-Metamodule-<commit>.zip`: metamodule NoMount, build từ **đúng commit** NoMount đã tích hợp vào kernel, cách làm giống job `build-nomount-module` trên CI
-  - `KernelSU_Next_v…_<số>-release.apk` và bản `…-spoofed…apk`: manager, lấy y như CI từ lượt build `build-manager-ci` của KernelSU-Next chính thức (nhánh `dev`). CI cũng không tự build manager
+  - `KernelSU_Next_v…_<số>-release.apk` và bản `…-spoofed…apk`: manager, lấy y như CI từ lượt build `build-manager-ci` của KernelSU-Next chính thức, tại commit mà kernel dùng để báo số phiên bản (merge-base của `dev-susfs` với `dev`), nên manager và kernel hiện cùng một số phiên bản. CI cũng không tự build manager
 - Nếu không build được NoMount (thiếu zig) hoặc không tải được manager (chưa `gh auth login`), kernel vẫn được đóng gói bình thường. Cuối log sẽ có dòng `WARNING: kernel built, but without: …`
 - Log: `~/muyu-build/build-<ngày giờ>.log`
 - Lần đầu mất khá lâu vì phải tải source (vài GB) và build từ đầu. Các lần sau nhanh hơn nhờ cache Bazel trong `/home/runner/.cache/bazel`.

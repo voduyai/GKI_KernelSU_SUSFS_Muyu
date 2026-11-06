@@ -153,7 +153,7 @@ jq -n \
     susfs_commit:$susfs_commit, root_flavor:"next", root_commit:$root_commit, nomount_commit:$nomount_commit,
     kernel_patches_commit:$kernel_patches_commit, anykernel3_commit:$anykernel3_commit,
     droidspaces_commit:$droidspaces_commit, brand_name:$brand_name, keep_kmi:false,
-    allow_version_mismatch:$allow, use_cache:false, page_size:$page_size, stock_config_artifact:""}' > "$INPUTS"
+    allow_version_mismatch:$allow, page_size:$page_size, stock_config_artifact:""}' > "$INPUTS"
 
 # ---- run the CI job ---------------------------------------------------------
 say "Running .github/workflows/build.yml (build-gki)"
@@ -215,7 +215,10 @@ EOF
 # ---- KernelSU-Next manager APKs (main.yml: resolve-sources + list-manager-apks)
 # The manager is never built from source: main.yml takes the "manager" and
 # "manager-spoofed" artifacts of the official build-manager-ci run for the
-# KernelSU-Next dev tip, or the latest successful dev run when that tip has none.
+# commit the kernel reports its version from, or the latest successful dev run
+# when that commit has none. With SUSFS the kernel is pershoot's dev-susfs and
+# reports 30000 + count(merge-base with upstream dev), so the manager is taken
+# at that merge base; a manager from the dev tip can show a different version.
 gh_api() {
   curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors \
     -H "Authorization: Bearer $GITHUB_TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/$1"
@@ -223,10 +226,18 @@ gh_api() {
 fetch_manager() {
   [ -n "$GITHUB_TOKEN" ] || { warn "not logged in to GitHub; run: gh auth login"; return 1; }
   local repo="KernelSU-Next/KernelSU-Next" wf="build-manager-ci.yml" mgr_sha="$KSU_BRANCH"
-  local run_id fb arts dl="$BUILD_DIR/manager" aid art apk name got=0
+  local run_id fb arts dl="$BUILD_DIR/manager" aid art apk name got=0 base
+  if has SUSFS; then
+    base="$(gh_api "repos/pershoot/KernelSU-Next/compare/dev...$ROOT_COMMIT" | jq -r '.merge_base_commit.sha // empty')" || true
+    if [[ "$base" =~ ^[0-9a-f]{40}$ ]]; then
+      mgr_sha="$base"
+    else
+      warn "could not resolve the dev-susfs merge base; the manager follows the dev tip"
+    fi
+  fi
   run_id="$(gh_api "repos/$repo/actions/workflows/$wf/runs?head_sha=$mgr_sha&status=success" | jq -r '.workflow_runs[0].id // empty')" || return 1
   if [ -z "$run_id" ]; then
-    echo "  no manager build for dev tip $mgr_sha, falling back to latest successful run"
+    echo "  no manager build for $mgr_sha, falling back to latest successful run"
     fb="$(gh_api "repos/$repo/actions/workflows/$wf/runs?branch=dev&status=success&per_page=1")" || return 1
     run_id="$(jq -r '.workflow_runs[0].id // empty' <<< "$fb")"
     mgr_sha="$(jq -r '.workflow_runs[0].head_sha // empty' <<< "$fb")"

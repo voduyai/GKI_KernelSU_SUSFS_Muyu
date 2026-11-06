@@ -23,6 +23,39 @@ runs:
         cp "${{ github.workspace }}/susfs4ksu/kernel_patches/include/linux/"* "${{ github.workspace }}/kernel/common/include/linux/"
         cp ${{ github.workspace }}/susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ inputs.version }}.patch ./
 
+    - name: Guard the priority-uid-filter credential helpers
+      # Upstream added susfs_switch_to_ksu_domain()/susfs_restore_creds() outside
+      # the #ifdef that guards their only callers. BakaSU's kernel tree on the
+      # older branches has no CONFIG_KSU_SUSFS_PRIORITY_UID_FILTER symbol, so the
+      # callers compile out and the definitions become dead code:
+      #   fs/susfs.c:183:21: error: unused function 'susfs_switch_to_ksu_domain'
+      #   fs/susfs.c:217:13: error: unused function 'susfs_restore_creds'
+      # Wrap them in the same switch. No-op where the symbol exists.
+      shell: bash
+      working-directory: ${{ github.workspace }}/kernel/common
+      run: |
+        python3 "${{ github.workspace }}/.github/scripts/susfs_guard_priority_helpers.py" fs/susfs.c
+
+    # Pre-i_user_ns() kernels (5.10 / 5.15, and old 6.1) pass the mount namespace
+    # explicitly to i_uid_into_mnt(); fs/susfs.c is written against the newer
+    # i_user_ns() helper, so it fails to compile there:
+    #   error: implicit declaration of function 'i_user_ns'
+    #   error: incompatible integer to pointer conversion passing 'int' to
+    #          parameter of type 'struct user_namespace *'
+    #   make[1]: *** [...: fs/susfs.o] Error 1
+    # Rewrite the two call sites to &init_user_ns when the helper is absent.
+    - name: Adapt fs/susfs.c for kernels without i_user_ns()
+      shell: bash
+      working-directory: ${{ github.workspace }}/kernel/common
+      run: |
+        if grep -q 'i_user_ns' include/linux/fs.h; then
+          echo "i_user_ns() present - fs/susfs.c needs no idmap adaptation"
+          exit 0
+        fi
+        # Python, not sed: '&' in a sed replacement expands to the whole match
+        # and mangles the call site (learned the hard way).
+        python3 "${{ github.workspace }}/.github/scripts/susfs_idmap_compat.py" fs/susfs.c
+
     # Fake patches restored selectively: only -le (lower sublevel, context-adding)
     # blocks are enabled. -ge blocks (context-removal, e.g. deleting #include lines
     # like trace/hooks/blk.h and trace/hooks/mm.h) stay disabled because they break
@@ -64,6 +97,18 @@ runs:
           sed -i '/^#include <linux\/shmem_fs.h>$/a #include <linux/mnt_idmapping.h>' fs/namespace.c
           echo "Applying open.c Android 13 5.15 Fake Patch"
           sed -i '/^#include <linux\/compat.h>$/a #include <linux/mnt_idmapping.h>' fs/open.c
+          # These sublevels have the idmapped-mount helpers in include/linux/fs.h
+          # but never shipped include/linux/mnt_idmapping.h (it appears only on
+          # later branches). The include is needed as patch hunk context, so stub
+          # the header when it is absent - an empty header is enough because
+          # i_uid_into_mnt() comes from fs.h. Without this, the leg patches and
+          # then dies with "fatal error: 'linux/mnt_idmapping.h' file not found"
+          # (job 122615422468, 5.15.41-android13-2022-10).
+          if [ ! -f include/linux/mnt_idmapping.h ]; then
+            printf '/* Stub: mnt idmap helpers live in linux/fs.h on this sublevel. */\n' \
+              > include/linux/mnt_idmapping.h
+            echo "  stubbed include/linux/mnt_idmapping.h"
+          fi
           echo "Applying fdinfo.c Android 13 5.15 Fake Patch"
           python3 "${{ github.workspace }}/.github/scripts/susfs_fake_fdinfo.py" fs/notify/fdinfo.c
         fi
@@ -83,16 +128,6 @@ runs:
           sed -i '/^#include <linux\/cpufreq_times.h>$/a #include <linux/dma-buf.h>' fs/proc/base.c
         fi
         # -ge 157 blocks stay disabled (context removal breaks SUSFS patch context)
-        # susfs4ksu gki-android14-6.1 (2026-10 sync) uses <trace/hooks/blk.h>
-        # as namespace.c context, which older 6.1 trees (e.g. 138) lack. Add it
-        # only for the patch; susfs-revert-patches removes it again.
-        if [ "${{ inputs.sublevel }}" -lt "157" ] \
-            && grep -q '^ #include <trace/hooks/blk.h>$' 50_add_susfs_in_gki-${{ inputs.version }}.patch \
-            && ! grep -q '^#include <trace/hooks/blk.h>$' fs/namespace.c; then
-          echo "Applying namespace.c blk.h context Fake Patch"
-          sed -i '/^#include "internal.h"$/a #include <trace/hooks/blk.h>' fs/namespace.c
-          touch .susfs_fake_blk_h
-        fi
 
     - name: Apply Android 15 6.6 Fake Patches
       shell: bash
@@ -101,8 +136,10 @@ runs:
       run: |
         echo "Applying 6.6 SUSFS fixes"
         if [ "${{ inputs.sublevel }}" -le "30" ]; then
-          echo "Applying taskmmu.c Android 15 6.6 Fake Patch"
-          python3 -c 'import re;c=open("fs/proc/task_mmu.c").read();c=re.sub(r"(\t+\t\tif\s*\(\s*vma->vm_end\s*>\s*last_vma_end\s*\))\n(\t+\t\t\tsmap_gather_stats\(vma,\s*&mss,\s*last_vma_end\);\n(\t+)\}",lambda m:m.group(1)+" {\n"+m.group(2)+"\n"+m.group(3)+"\t\tlast_vma_end = vma->vm_end;\n"+m.group(3)+"\t}\n"+m.group(3)+"}",c,count=1);open("fs/proc/task_mmu.c","w").write(c)'
+          # Brace the show_smaps_rollup "Case 4" block so the patch's hunk #6
+          # matches. The previous inline python one-liner had an unbalanced
+          # regex and raised on every run, so this reshape never happened.
+          python3 "${{ github.workspace }}/.github/scripts/susfs_fake_66_smaps.py" fs/proc/task_mmu.c apply
         fi
         if [ "${{ inputs.sublevel }}" -le "30" ] && [ "${{ inputs.os_patch_level }}" = "2024-07" ]; then
           echo "Adding __fold_filemap_fixup_entry stub for 2024-07 kernels"
@@ -144,11 +181,58 @@ runs:
     #       python3 "${{ github.workspace }}/.github/scripts/susfs_fake_612.py" fs/proc/task_mmu.c apply
     #     fi
 
+    - name: Restore patch include context
+      # Google keeps dropping `#include <trace/hooks/*.h>` lines from the GKI
+      # sources while the SUSFS patch still lists them as hunk #1 context, so
+      # patch fails on those sublevels (namespace.c, task_mmu.c, super.c...).
+      # Re-insert the missing include lines in the order the patch expects and
+      # stub any header that no longer exists. Idempotent, no version gates.
+      shell: bash
+      working-directory: ${{ github.workspace }}/kernel/common
+      run: |
+        python3 "${{ github.workspace }}/.github/scripts/susfs_restore_context.py" \
+          "50_add_susfs_in_gki-${{ inputs.version }}.patch" "$PWD"
+
     - name: Apply Kernel SUSFS Patches
       shell: bash
       working-directory: ${{ github.workspace }}/kernel/common
       run: |
-        patch -p1 < 50_add_susfs_in_gki-${{ inputs.version }}.patch
+        # android17-6.18: the SUS_MAP hook in show_smaps_rollup() is NOT in the
+        # patch file. Google keeps reworking that loop (lock_ctx_mm + VMA_ITERATOR
+        # in 6.18), so a context hunk applies with a 40-line offset on one
+        # sublevel and rejects outright on the next. The patch ships without it
+        # and the hook is inserted by anchor below, after the patch applies.
+        if [ "${{ inputs.version }}" = "android16-6.12" ]; then
+          # Sublevels below 6.12.92 predate the show_smaps_rollup refactor and
+          # never had the fs/exec.c dma-buf include, so plain `patch` rejects
+          # hunk #1 of exec.c and hunks #4-6 of task_mmu.c. Adapt the patch for
+          # the source shape first (ported from PR #342).
+          python3 "${{ github.workspace }}/.github/scripts/apply_susfs_compat.py" \
+            "$PWD" "50_add_susfs_in_gki-${{ inputs.version }}.patch"
+        else
+          # Deliberately no --forward (PR #342 uses --batch --forward here):
+          # a reversed/already-applied hunk must fail loudly, not be skipped.
+          patch -p1 < 50_add_susfs_in_gki-${{ inputs.version }}.patch
+        fi
+
+        if [ "${{ inputs.version }}" = "android17-6.18" ]; then
+          python3 "${{ github.workspace }}/.github/scripts/susfs_618_task_mmu.py" "$PWD"
+          # 6.18 API deltas the 6.12 patch cannot express: the fake-mnt_id
+          # allocators (xarray + struct mount changes), -Wmissing-prototypes on
+          # the susfs_get_non_sus_* helpers, and SELinux's cred/task split.
+          python3 "${{ github.workspace }}/.github/scripts/susfs_618_compile_fixes.py" "$PWD"
+          # 6.18 enables -Wmissing-prototypes by default; the 6.12 source only
+          # declares 19 of fs/susfs.c's ~40 non-static functions.
+          python3 "${{ github.workspace }}/.github/scripts/susfs_618_prototypes.py" "$PWD"
+        fi
+
+        # The 5.10/5.15/6.1 SUSFS patches widen show_fdinfo() to a 3-argument
+        # callback but leave fanotify_fdinfo() at two, which only compiles while
+        # CONFIG_FANOTIFY=n. With fanotify on (PR #349) it is a hard error:
+        #   incompatible function pointer types passing
+        #   'void (struct seq_file *, struct fsnotify_mark *)' to parameter of
+        #   type 'void (*)(struct seq_file *, struct fsnotify_mark *, struct file *)'
+        python3 "${{ github.workspace }}/.github/scripts/susfs_fdinfo_fanotify_arity.py" "$PWD"
 
         # susfs4ksu (2026-10 sync) calls ksu_setup_preinit_file() and
         # ksu_preinit_handle_post_execveat() from do_execveat_common() unless

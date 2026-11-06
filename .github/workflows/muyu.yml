@@ -37,7 +37,6 @@ jobs:
           # already track their latest tips in either mode.
           gh workflow run main.yml --ref "$BUILD_REF" \
             -f release_type=CI \
-            -f use_cache=true \
             -f allow_version_mismatch=false \
             -f kernel_build_version=6.1.x-android14 \
             -f os_patch_level=2025-06 \

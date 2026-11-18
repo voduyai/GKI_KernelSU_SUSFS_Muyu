@@ -21,17 +21,9 @@ runs:
   using: "composite"
   steps:
     - name: Enable Kernel Configs
-      uses: ./.github/actions/set-kernel-config
-      with:
-        config_list: |
-          CONFIG_OVERLAY_FS=y
-          CONFIG_TMPFS_XATTR=y
-          CONFIG_TMPFS_POSIX_ACL=y
-          CONFIG_KALLSYMS=y
-          CONFIG_KALLSYMS_ALL=y
-          # No CONFIG_FANOTIFY (upstream #349): it adds two entries to
-          # enum ucount_type, which grows struct ucounts and user_namespace.
-          # That changes the modversions CRC of most exported symbols
-          # (929 in muyu's vendor_boot alone), so the stock vendor modules
-          # no longer load and the device bootloops.
-          
+      shell: bash
+      working-directory: ${{ github.workspace }}/kernel/common
+      run: |
+        python3 "${{ github.workspace }}/.github/scripts/append_fragment.py" \
+          "${{ github.workspace }}/.github/actions/misc/enable-kernel-configs.fragment" \
+          --dest wild_defconfig.fragment --label enable-kernel-configs

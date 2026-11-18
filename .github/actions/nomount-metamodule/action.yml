@@ -50,28 +50,20 @@ runs:
         mkdir -p "$source_dir/bin"
         (
           cd "$source_dir/userspace/src"
-          # NoMount 1e800826e412 (2026-11-14) moved nm from a hand-written
-          # _start with raw syscalls to a normal main() linked statically
-          # against musl; its headers now need libc (<unistd.h> ...). Build
-          # that shape the way upstream's build.yml does, and keep the old
-          # -nostdlib flags for pins from before the switch.
-          if grep -qE '^int main\(' nm.c; then
-            zig cc -target aarch64-linux -Oz -mcmodel=tiny -static -ffreestanding \
-              -fno-ident -fno-unwind-tables -fno-asynchronous-unwind-tables \
-              -Wl,--gc-sections,-z,norelro nm.c -o ../../bin/nm-arm64
-            zig cc -target arm-linux -Oz -static -ffreestanding \
-              -ffunction-sections -fdata-sections -fno-unwind-tables \
-              -fno-asynchronous-unwind-tables -fno-ident \
-              -Wl,--gc-sections,-z,norelro nm.c -o ../../bin/nm-arm
-          else
-            zig cc -target aarch64-linux -Oz -mcmodel=tiny -static -nostdlib \
-              -ffreestanding -fno-unwind-tables -fno-ident -Wno-invalid-noreturn \
-              -Wl,--entry=_start nm.c -o ../../bin/nm-arm64
-            zig cc -target arm-linux -Oz -static -nostdlib -ffreestanding \
-              -fno-unwind-tables -fno-ident -Wno-invalid-noreturn \
-              -ffunction-sections -fdata-sections -Wl,--gc-sections \
-              -Wl,--entry=_start nm.c -o ../../bin/nm-arm
-          fi
+          # nm.c became a normal libc program in upstream 611f242 ("module:
+          # drop shell injection pipeline, call nm directly"): it has main() and
+          # pulls <unistd.h>/<string.h>. Our build added -nostdlib, which removes
+          # the libc headers entirely and died with
+          #   ./nm.h:4:10: fatal error: 'unistd.h' file not found
+          # Upstream's own CI never passed -nostdlib, and drops --entry=_start
+          # now that main() exists, so this mirrors it exactly.
+          zig cc -target aarch64-linux -Oz -mcmodel=tiny -static -ffreestanding \
+            -fno-unwind-tables -fno-ident -Wno-invalid-noreturn \
+            -mllvm -enable-machine-outliner=always nm.c -o ../../bin/nm-arm64
+          zig cc -target arm-linux -Oz -static -ffreestanding \
+            -fno-unwind-tables -fno-ident -Wno-invalid-noreturn \
+            -ffunction-sections -fdata-sections -Wl,--gc-sections \
+            nm.c -o ../../bin/nm-arm
         )
 
         cp -a "$source_dir/module" "$module_dir"

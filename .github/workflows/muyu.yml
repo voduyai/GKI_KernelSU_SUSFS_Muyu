@@ -64,6 +64,7 @@ jobs:
             -f use_bbg=true \
             -f use_net=true \
             -f use_ds=true \
+            -f use_usba=false \
             -f use_ntsync=true \
             -f use_ptrace=true \
             -f use_unicode=true \

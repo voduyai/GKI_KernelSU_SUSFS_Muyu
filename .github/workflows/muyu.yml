@@ -4,6 +4,11 @@ name: Build muyu (Xiaomi Pad 7 Pro)
 # Stock kernel: 6.1.138-android14-11-g0c3d559bcd85-ab14529422
 # (= android14-6.1-2025-06_r15, pinned by the muyu branch).
 #
+# The "rom" input picks the target ROM. cn is for CN ROMs, which run Xiaomi's
+# "-mi" OKI kernel: their vendor_boot loads a cifs.ko built against it in
+# first-stage init, and a cn build lets that module load on GKI
+# (.github/scripts/muyu_cn_cifs_modversions.py). cn zips are tagged -CN.
+#
 # It does not build anything itself: it dispatches "Build Kernels" (main.yml)
 # on the branch picked in "Use workflow from" with the inputs below, so the
 # upstream workflow files stay untouched and upstream updates merge cleanly.
@@ -15,6 +20,14 @@ permissions:
 
 on:
   workflow_dispatch:
+    inputs:
+      rom:
+        description: "ROM: global (HyperOS Global) or cn (CN ROMs with Xiaomi's OKI vendor modules)"
+        type: choice
+        options:
+          - global
+          - cn
+        default: global
 
 jobs:
   dispatch:
@@ -25,6 +38,7 @@ jobs:
       # Build the branch this workflow was started from (main in the
       # GKI_KernelSU_SUSFS_Muyu repo, muyu in the old fork).
       BUILD_REF: ${{ github.ref_name }}
+      ROM: ${{ inputs.rom }}
     steps:
       - name: Start Build Kernels with the muyu settings
         run: |
@@ -40,7 +54,7 @@ jobs:
             -f allow_version_mismatch=false \
             -f kernel_build_version=6.1.x-android14 \
             -f os_patch_level=2025-06 \
-            -f page_size=4k \
+            -f page_size=4k             -f rom="$ROM" \
             -f brand_name=stock \
             -f keep_kmi=false \
             -f commit_mode=latest \
@@ -70,7 +84,7 @@ jobs:
                 echo
                 echo "Run: $url"
                 echo
-                echo "6.1.x-android14 · 2025-06 (r15) · 4k · brand stock · KernelSU-Next"
+                echo "6.1.x-android14 · 2025-06 (r15) · 4k · brand stock · KernelSU-Next · ROM $ROM"
                 echo "SUSFS, NoMount (latest), BBG, Networking, DroidSpaces, NTSync, Ptrace, Unicode, BPF · bypass off"
               } >> "$GITHUB_STEP_SUMMARY"
               exit 0

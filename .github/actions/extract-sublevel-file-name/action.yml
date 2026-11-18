@@ -20,6 +20,10 @@ inputs:
     required: false
     type: string
     default: '4k'
+  rom:
+    required: false
+    type: string
+    default: 'global'
 outputs:
   file_name:
     value: ${{ steps.extract.outputs.file_name }}
@@ -65,6 +69,10 @@ runs:
         # Only non-default page sizes are tagged, so 4k artifact names stay as-is.
         if [ "${{ inputs.page_size }}" = "16k" ]; then
           FILE_NAME="${FILE_NAME}-16k"
+        fi
+        # muyu: CN-ROM builds carry a vendor-module workaround, so tag them.
+        if [ "${{ inputs.rom }}" = "cn" ]; then
+          FILE_NAME="${FILE_NAME}-CN"
         fi
 
         echo "SUBLEVEL=$SUBLEVEL" >> "$GITHUB_ENV"

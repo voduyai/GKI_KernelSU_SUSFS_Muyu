@@ -76,6 +76,11 @@ on:
         required: false
         type: string
         default: "4k"
+      rom:
+        description: "muyu ROM target: global (default) or cn (Xiaomi OKI vendor modules, android14-6.1 only)"
+        required: false
+        type: string
+        default: "global"
       stock_config_artifact:
         description: "Artifact name with prefetched stock configs (stock_<kver>[_16k].config)"
         required: false
@@ -98,6 +103,21 @@ jobs:
         with:
           name: ${{ inputs.stock_config_artifact }}
           path: stock-configs
+
+      - name: Validate ROM Target
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${{ inputs.rom }}" in
+            global|'') ;;
+            cn)
+              if [ "${{ inputs.version }}" != "android14-6.1" ]; then
+                echo "ERROR: rom=cn is only for muyu's android14-6.1 kernel, not ${{ inputs.version }}." >&2
+                exit 1
+              fi
+              ;;
+            *) echo "ERROR: unsupported rom '${{ inputs.rom }}' (expected global or cn)." >&2; exit 1 ;;
+          esac
 
       - name: Validate Page Size
         shell: bash
@@ -217,6 +237,7 @@ jobs:
           os_patch_level: ${{ inputs.os_patch_level }}
           variant: ${{ inputs.variant }}
           page_size: ${{ inputs.page_size }}
+          rom: ${{ inputs.rom }}
 
       - name: Kernel Fixes
         uses: ./.github/actions/kernel-fixes
@@ -226,6 +247,7 @@ jobs:
           kernel_version: ${{ inputs.kernel_version }}
           sublevel: ${{ steps.extract.outputs.sublevel }}
           os_patch_level: ${{ inputs.os_patch_level }}
+          rom: ${{ inputs.rom }}
 
       - name: Reject KowSU with SUSFS
         if: inputs.root_flavor == 'kowsu' && (contains(inputs.feature_set, 'SUSFS') || inputs.feature_set == 'All')

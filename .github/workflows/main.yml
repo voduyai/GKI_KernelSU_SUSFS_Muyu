@@ -38,6 +38,13 @@ on:
         required: true
         type: string
         default: All
+      rom:
+        description: "muyu ROM the 6.1.x-android14 build targets: global, or cn (Xiaomi OKI vendor modules)"
+        type: choice
+        options:
+          - global
+          - cn
+        default: global
       page_size:
         description: "ARM64 page size. 16k requires explicitly selecting Kernel Version 6.1.x-android14, 6.6.x-android15 or 6.12.x-android16 (All is rejected)"
         type: choice
@@ -783,6 +790,7 @@ jobs:
     uses: ./.github/workflows/prepare.yml
     with:
       config_file: .github/config/android14-6.1.json
+      rom: ${{ inputs.rom || 'global' }}
       feature_set: ${{ needs.resolve-sources.outputs.feature_set }}
       susfs_commit: ${{ matrix.root.root_flavor == 'bakasu' && needs.resolve-sources.outputs.susfs_commit_android14_6_1_bakasu || (matrix.root.root_flavor == 'sukisu-ultra' && needs.resolve-sources.outputs.susfs_commit_android14_6_1_sukisu_ultra || needs.resolve-sources.outputs.susfs_commit_android14_6_1) }}
       nomount_commit: ${{ needs.resolve-sources.outputs.nomount_commit }}

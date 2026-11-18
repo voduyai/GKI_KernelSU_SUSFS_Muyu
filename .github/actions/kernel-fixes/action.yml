@@ -16,6 +16,11 @@ inputs:
   os_patch_level:
     required: true
     type: string
+  rom:
+    description: 'muyu ROM target: global or cn'
+    required: false
+    type: string
+    default: 'global'
 
 runs:
   using: composite
@@ -85,6 +90,16 @@ runs:
         echo "[*] Applying mmap.c fix for specific version combo."
         sed -i 's/\s*vm_flags_clear(new_vma, VM_PAD_MASK);/                new_vma->vm_flags \&= ~VM_PAD_MASK;/' mm/mmap.c
         echo "MMAP_VM_FLAGS_FIX=true" >> "$GITHUB_ENV"
+
+    # muyu CN ROMs: vendor_boot's first-stage cifs.ko is built against
+    # Xiaomi's "-mi" OKI kernel and wants different CRCs for two
+    # mm/swapfile.c exports. A rejected first-stage module hangs the boot at
+    # the logo, so let cifs (and only cifs) accept those two symbols.
+    - name: 'Accept Xiaomi CN cifs.ko swap-symbol CRCs (muyu)'
+      if: inputs.version == 'android14-6.1' && inputs.rom == 'cn'
+      shell: bash
+      working-directory: ${{ github.workspace }}/kernel/common
+      run: python3 "${{ github.workspace }}/.github/scripts/muyu_cn_cifs_modversions.py" "$PWD"
 
     - name: 'Final Kernel Fixes Summary'
       shell: bash

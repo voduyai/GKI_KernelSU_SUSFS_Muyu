@@ -48,7 +48,7 @@ bash local/build-muyu.sh
 ```
 
 - Kết quả, trong `D:\Muyu\builds\local` (hoặc thư mục `MUYU_OUT_DIR`):
-  - `6.1.138-android14-2025-06-KernelSU-Next-AnyKernel3-local-<ngày>.zip`: kernel. Khi dùng `--gki`, tên file theo bản đã chọn
+  - `6.1.138-android14-2025-06-KernelSU-Next-AnyKernel3-local-<ngày>.zip`: kernel. Khi dùng `--gki`, tên file theo bản đã chọn. Bản `--rom cn` có thêm `-CN` sau ngày GKI
   - `NoMount-Metamodule-<commit>.zip`: metamodule NoMount, build từ **đúng commit** NoMount đã tích hợp vào kernel, cách làm giống job `build-nomount-module` trên CI
   - `KernelSU_Next_v…_<số>-release.apk` và bản `…-spoofed…apk`: manager, lấy y như CI từ lượt build `build-manager-ci` của KernelSU-Next chính thức, tại commit mà kernel dùng để báo số phiên bản (merge-base của `dev-susfs` với `dev`), nên manager và kernel hiện cùng một số phiên bản. CI cũng không tự build manager
 - Nếu không build được NoMount (thiếu zig) hoặc không tải được manager (chưa `gh auth login`), kernel vẫn được đóng gói bình thường. Cuối log sẽ có dòng `WARNING: kernel built, but without: …`
@@ -63,6 +63,7 @@ Tùy chọn:
 | `bash local/build-muyu.sh --clean` | Build xong thì xóa thư mục làm việc (`~/muyu-build/workspace`), chỉ giữ file zip |
 | `bash local/build-muyu.sh --gki 2026-09` | Build bản GKI `android14-6.1` khác (ở đây là 6.1.176). Mặc định là `2025-06` = kernel stock muyu (tag `_r15`). Ghi sai ngày thì script sẽ liệt kê các bản có sẵn |
 | `bash local/build-muyu.sh --kernel-only` | Chỉ build kernel, không build NoMount và không tải manager |
+| `bash local/build-muyu.sh --rom cn` | Build cho ROM CN (xem mục bên dưới). Mặc định là `global`. Kết hợp được với `--gki` |
 | `MUYU_OUT_DIR=~/out bash local/build-muyu.sh` | Lưu zip và APK vào thư mục khác |
 
 ## Đổi thông số
@@ -84,6 +85,16 @@ Lên bản mới hơn, một vài module trong `system_dlkm` (build cùng kernel
 ```bash
 adb shell su -c 'dmesg | grep -iE "disagrees|unknown symbol"'
 ```
+
+### ROM CN (`--rom cn`)
+
+ROM CN dùng kernel OKI riêng của Xiaomi (`…-mi`), không phải GKI. Hầu hết module vendor vẫn khớp với GKI. Riêng `cifs.ko` trong vendor_boot được build theo kernel `-mi`, nên lệch CRC ở hai hàm `__page_file_index` và `add_swap_extent`. Module này nằm trong danh sách nạp giai đoạn đầu (`modules.load`), nên khi nó nạp lỗi init dừng hẳn và máy treo ở logo.
+
+Bản `--rom cn` sửa `kernel/module/version.c` (script `.github/scripts/muyu_cn_cifs_modversions.py`): chỉ module `cifs` được bỏ qua lệch CRC ở đúng hai hàm này, mọi trường hợp lệch khác vẫn bị từ chối. Bản global không có thay đổi này.
+
+Trên CI, chọn `rom: cn` khi chạy workflow "Build muyu (Xiaomi Pad 7 Pro)".
+
+Trước khi flash, giữ sẵn `boot.img` gốc của ROM CN để `fastboot flash boot boot.img` nếu máy vẫn treo.
 
 ## Cập nhật từ WildKernels
 

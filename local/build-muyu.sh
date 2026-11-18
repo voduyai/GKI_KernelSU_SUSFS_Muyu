@@ -8,6 +8,8 @@
 #   ./local/build-muyu.sh --gki 2026-09  build another android14-6.1 GKI release
 #                                        (default 2025-06 = muyu stock, tag _r15)
 #   ./local/build-muyu.sh --kernel-only  skip the NoMount metamodule and manager APKs
+#   ./local/build-muyu.sh --rom cn       build for the CN ROM (Xiaomi OKI vendor
+#                                        modules; zip is tagged -CN). Default: global
 #
 # Like main.yml, a build also produces the NoMount metamodule (needs zig) and
 # fetches the KernelSU-Next manager APKs (needs `gh auth login`).
@@ -25,6 +27,7 @@ BRAND_NAME="stock"
 FEATURES="SUSFS NoMount BBG NET DS NTSync Ptrace Unicode BPF"   # drop a word to disable it
 NOMOUNT_MODE="latest"     # latest = maxsteeel/nomount dev tip, verified = WildKernels pin
 ALLOW_VERSION_MISMATCH=false
+ROM="global"              # global, or cn: accept the CN vendor_boot cifs.ko (--rom)
 # Root: KernelSU-Next only. With SUSFS it uses pershoot/KernelSU-Next dev-susfs,
 # without SUSFS KernelSU-Next/KernelSU-Next dev, exactly like main.yml.
 # ----------------------------------------------------------------------------
@@ -44,11 +47,19 @@ while [ $# -gt 0 ]; do
     --gki) [ $# -ge 2 ] || { echo "--gki needs a date, e.g. --gki 2026-09" >&2; exit 2; }
            OS_PATCH_LEVEL="$2"; shift ;;
     --gki=*) OS_PATCH_LEVEL="${1#--gki=}" ;;
-    -h|--help) sed -n '2,15p' "$0"; exit 0 ;;
+    --rom) [ $# -ge 2 ] || { echo "--rom needs global or cn" >&2; exit 2; }
+           ROM="$2"; shift ;;
+    --rom=*) ROM="${1#--rom=}" ;;
+    -h|--help) sed -n '2,17p' "$0"; exit 0 ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
   shift
 done
+
+case "$ROM" in
+  global|cn) ;;
+  *) echo "--rom must be global or cn, not '$ROM'" >&2; exit 2 ;;
+esac
 
 say() { printf '\n\033[1;36m== %s\033[0m\n' "$*"; }
 warn() { printf '\033[1;33mWARNING: %s\033[0m\n' "$*" >&2; }
@@ -122,6 +133,7 @@ FEATURE_SET="${FEATURE_SET%+}"
 
 cat <<EOF
   kernel        : $VERSION $KERNEL_VERSION.$SUBLEVEL ($OS_PATCH_LEVEL), $PAGE_SIZE, brand=$BRAND_NAME
+  ROM           : $ROM
   features      : ${FEATURE_SET:-none}
   KernelSU-Next : $ROOT_COMMIT
   NoMount       : $NOMOUNT_COMMIT ($NOMOUNT_MODE)
@@ -147,13 +159,13 @@ jq -n \
   --arg ksu_branch "$KSU_BRANCH" --arg susfs_commit "$SUSFS_PIN" --arg root_commit "$ROOT_COMMIT" \
   --arg nomount_commit "$NOMOUNT_COMMIT" --arg kernel_patches_commit "$KERNEL_PATCHES_COMMIT" \
   --arg anykernel3_commit "$ANYKERNEL3_COMMIT" --arg droidspaces_commit "$DROIDSPACES_COMMIT" \
-  --arg brand_name "$BRAND_NAME" --arg page_size "$PAGE_SIZE" --argjson allow "$ALLOW_VERSION_MISMATCH" \
+  --arg brand_name "$BRAND_NAME" --arg page_size "$PAGE_SIZE" --argjson allow "$ALLOW_VERSION_MISMATCH"   --arg rom "$ROM" \
   '{version:$version, android_version:$android_version, kernel_version:$kernel_version, sublevel:$sublevel,
     os_patch_level:$os_patch_level, variant:"KernelSU-Next", feature_set:$feature_set, ksu_branch:$ksu_branch,
     susfs_commit:$susfs_commit, root_flavor:"next", root_commit:$root_commit, nomount_commit:$nomount_commit,
     kernel_patches_commit:$kernel_patches_commit, anykernel3_commit:$anykernel3_commit,
     droidspaces_commit:$droidspaces_commit, brand_name:$brand_name, keep_kmi:false,
-    allow_version_mismatch:$allow, page_size:$page_size, stock_config_artifact:""}' > "$INPUTS"
+    allow_version_mismatch:$allow, page_size:$page_size, rom:$rom, stock_config_artifact:""}' > "$INPUTS"
 
 # ---- run the CI job ---------------------------------------------------------
 say "Running .github/workflows/build.yml (build-gki)"
@@ -175,7 +187,8 @@ say "Packaging AnyKernel3"
 [ -f "$WS/AnyKernel3/Image" ] || die "no Image in $WS/AnyKernel3"
 mkdir -p "$OUT_DIR"
 VER="$(strings "$WS/AnyKernel3/Image" | grep -m1 '^Linux version' || true)"
-ZIP="$OUT_DIR/6.1.$SUBLEVEL-android14-$OS_PATCH_LEVEL-KernelSU-Next-AnyKernel3-local-$(date +%Y%m%d-%H%M).zip"
+ROM_TAG=""; [ "$ROM" = cn ] && ROM_TAG="-CN"
+ZIP="$OUT_DIR/6.1.$SUBLEVEL-android14-$OS_PATCH_LEVEL$ROM_TAG-KernelSU-Next-AnyKernel3-local-$(date +%Y%m%d-%H%M).zip"
 (cd "$WS/AnyKernel3" && zip -qr9 "$ZIP" . -x '.git*' -x 'README.md')
 echo "  $VER"
 echo "  zip: $ZIP"
